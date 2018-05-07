@@ -1,0 +1,6 @@
+<launch>
+  <node pkg="rostopic" type="rostopic" name="rostopic_pub" 
+        args="pub -s -r 10 input geometry_msgs/PoseStamped '{header: {stamp: now}, pose: {orientation: {w: 1.0}}}'"/>
+
+  <test test-name="test_shapeshifterstamped" pkg="topic_tools" type="topic_tools-test_shapeshifterstamped"/>
+</launch>
