@@ -92,6 +92,7 @@ struct ExactTime : public PolicyBase<M0, M1, M2, M3, M4, M5, M6, M7, M8>
   ExactTime(uint32_t queue_size)
   : parent_(0)
   , queue_size_(queue_size)
+  , last_check_time_(0)
   {
   }
 
@@ -160,6 +161,17 @@ private:
   void checkTuple(Tuple& t)
   {
     namespace mt = ros::message_traits;
+
+    if (ros::Time::isSimTime())
+    {
+      ros::Time now = ros::Time::now();
+      if (now < last_check_time_)
+      {
+        ROS_WARN("Detected jump back in time. Clearing the message filters queue");
+        tuples_.clear();
+      }
+      last_check_time_ = now;
+    }
 
     bool full = true;
     full = full && (bool)boost::get<0>(t).getMessage();
@@ -231,6 +243,7 @@ private:
   typedef std::map<ros::Time, Tuple> M_TimeToTuple;
   M_TimeToTuple tuples_;
   ros::Time last_signal_time_;
+  ros::Time last_check_time_;
 
   Signal drop_signal_;
 

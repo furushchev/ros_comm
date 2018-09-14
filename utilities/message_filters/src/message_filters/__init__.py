@@ -207,12 +207,22 @@ class TimeSynchronizer(SimpleFilter):
 
     def connectInput(self, fs):
         self.queues = [{} for f in fs]
+        self.latest_stamps = [rospy.Time(0) for f in fs]
         self.input_connections = [
             f.registerCallback(self.add, q, i_q)
             for i_q, (f, q) in enumerate(zip(fs, self.queues))]
 
-    def add(self, msg, my_queue, my_queue_index=None):
+    def add(self, msg, my_queue, my_queue_index=None, latest_stamp=None):
         self.lock.acquire()
+        if not rospy.rostime.is_wallclock() and my_queue_index is not None:
+            now = rospy.Time.now()
+            if now < self.latest_stamps[my_queue_index]:
+                rospy.logwarn("Detected jump back in time. Clearing message filter queue")
+                my_queue.clear()
+                self.latest_stamps[my_queue_index] = now
+                self.lock.release()
+                return
+            self.latest_stamps[my_queue_index] = now
         my_queue[msg.header.stamp] = msg
         while len(my_queue) > self.queue_size:
             del my_queue[min(my_queue)]
@@ -256,6 +266,15 @@ class ApproximateTimeSynchronizer(TimeSynchronizer):
             stamp = msg.header.stamp
 
         self.lock.acquire()
+        if not rospy.rostime.is_wallclock() and my_queue_index is not None:
+            now = rospy.Time.now()
+            if now < self.latest_stamps[my_queue_index]:
+                rospy.logwarn("Detected jump back in time. Clearing message filter queue")
+                my_queue.clear()
+                self.latest_stamps[my_queue_index] = now
+                self.lock.release()
+                return
+            self.latest_stamps[my_queue_index] = now
         my_queue[stamp] = msg
         while len(my_queue) > self.queue_size:
             del my_queue[min(my_queue)]

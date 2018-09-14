@@ -118,6 +118,7 @@ struct ApproximateTime : public PolicyBase<M0, M1, M2, M3, M4, M5, M6, M7, M8>
   , has_dropped_messages_(9, false)
   , inter_message_lower_bounds_(9, ros::Duration(0))
   , warned_about_incorrect_bound_(9, false)
+  , last_stamps_(9, ros::Time(0, 0))
   {
     ROS_ASSERT(queue_size_ > 0);  // The synchronizer will tend to drop many messages with a queue size of 1. At least 2 is recommended.
   }
@@ -143,6 +144,7 @@ struct ApproximateTime : public PolicyBase<M0, M1, M2, M3, M4, M5, M6, M7, M8>
     has_dropped_messages_ = rhs.has_dropped_messages_;
     inter_message_lower_bounds_ = rhs.inter_message_lower_bounds_;
     warned_about_incorrect_bound_ = rhs.warned_about_incorrect_bound_;
+    last_stamps_ = rhs.last_stamps_;
 
     return *this;
   }
@@ -202,6 +204,19 @@ struct ApproximateTime : public PolicyBase<M0, M1, M2, M3, M4, M5, M6, M7, M8>
   {
     boost::mutex::scoped_lock lock(data_mutex_);
 
+    if (ros::Time::isSimTime())
+    {
+      ros::Time now = ros::Time::now();
+      if (now < last_stamps_[i])
+      {
+        ROS_WARN("Detected jump back in time. Clearing the message filters queue");
+        last_stamps_[i] = now;
+        clear();
+        return;
+      }
+      last_stamps_[i] = now;
+    }
+
     std::deque<typename mpl::at_c<Events, i>::type>& deque = boost::get<i>(deques_);
     deque.push_back(evt);
     if (deque.size() == (size_t)1) {
@@ -217,6 +232,7 @@ struct ApproximateTime : public PolicyBase<M0, M1, M2, M3, M4, M5, M6, M7, M8>
     {
       checkInterMessageBound<i>();
     }
+
     // Check whether we have more messages than allowed in the queue.
     // Note that during the above call to process(), queue i may contain queue_size_+1 messages.
     std::vector<typename mpl::at_c<Events, i>::type>& past = boost::get<i>(past_);
@@ -268,6 +284,37 @@ struct ApproximateTime : public PolicyBase<M0, M1, M2, M3, M4, M5, M6, M7, M8>
   }
 
 private:
+  void clear()
+  {
+    boost::get<0>(past_).clear();
+    boost::get<1>(past_).clear();
+    boost::get<2>(past_).clear();
+    boost::get<3>(past_).clear();
+    boost::get<4>(past_).clear();
+    boost::get<5>(past_).clear();
+    boost::get<6>(past_).clear();
+    boost::get<7>(past_).clear();
+    boost::get<8>(past_).clear();
+
+    boost::get<0>(deques_).clear();
+    boost::get<1>(deques_).clear();
+    boost::get<2>(deques_).clear();
+    boost::get<3>(deques_).clear();
+    boost::get<4>(deques_).clear();
+    boost::get<5>(deques_).clear();
+    boost::get<6>(deques_).clear();
+    boost::get<7>(deques_).clear();
+    boost::get<8>(deques_).clear();
+    num_non_empty_deques_ = 0;
+    pivot_ = NO_PIVOT;
+    for (size_t i = 0; i < 9; ++i)
+    {
+      has_dropped_messages_[i] = false;
+      inter_message_lower_bounds_[i] = ros::Duration(0);
+      warned_about_incorrect_bound_[i] = false;
+    }
+  }
+
   // Assumes that deque number <index> is non empty
   template<int i>
   void dequeDeleteFront()
@@ -848,6 +895,7 @@ private:
   std::vector<bool> has_dropped_messages_;
   std::vector<ros::Duration> inter_message_lower_bounds_;
   std::vector<bool> warned_about_incorrect_bound_;
+  std::vector<ros::Time> last_stamps_;
 };
 
 } // namespace sync
